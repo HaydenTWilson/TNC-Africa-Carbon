@@ -5,22 +5,27 @@ This repository houses the various scripts that have been developed by the TNC A
 
 The scripts have been designed to provide decision ready data in support of Carbon project design and implementation and can be broadly classed into the following groups:
 
-## Forest Assessment Tools 
+## 1. ARR Tools
+Tools designed to assist with the establishment of project and control plots, develop the performance benchmark for VM0047 projects
+
+## 2. Fire tools
+Tools for characterising the fire histories and deriving metrics for calculating project performance in fire managment. 
+
+## 3. Forest Assessment Tools 
 Tools for assessing changes in:
 1. AboveGround Woody Biomass Stocks
 2. Canopy Height
 3. Canopy Cover
-## REDD+ Tools
+   
+## 4. Forest Inventory Tools
+Tools for planning and assessing forest inventories.
+
+## 5. REDD+ Tools
 Tools designed to asssist with the development of:
 1. Forest Cover Benchmark maps
 2. Deforestation Risk models.
-## ARR Tools
-Tools designed to assist with the establishment of project and control plots, develop the performance benchmark for VM0047 projects
-## Fire tools
-Tools for characterising the fire histories and deriving metrics for calculating project performance in fire managment. 
-## Forest Inventory Tools
-Tools for planning and assessing forest inventories.
 
+## 6. Case Studies
 The implementation of these tools are then showcased in the case studies folder, where detailed write ups of how the tools have been implemented within the context of actual TNC supported carbon projects throughout africa.
 
 
