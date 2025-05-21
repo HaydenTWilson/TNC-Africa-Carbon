@@ -6,7 +6,7 @@ They are an ML based method for generating continuous surface predictions of Can
 The RandomForest classifier is trained using GEDI data as labels, with Sentinel 1 SAR, Sentinel 2 and elevation data as inputs.
 
 This Repo contains two files:
-1. The script for use in Earth Engine
+1. The script for use in Earth Engine (Forest_assessment.js)
 2. A case study showcasing the use of the script in generating forest cover maps for use in forest inventory planning or forest cover benchmark maps.
 
 ## Script Workflow
