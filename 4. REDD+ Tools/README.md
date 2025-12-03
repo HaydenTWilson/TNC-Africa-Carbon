@@ -5,7 +5,7 @@ in this repository to estimate the likely baseline rates of deforestation a proj
 
 The scripts have been developed to be used in conjunction with the Clarklab Udef-ARP tool, available at https://github.com/ClarkCGA/UDef-ARP.
 
-## The VM00048 Risk Mapping tool
+## The VM0048 JNR Riskmapping tool
 The tool has been designed to run in Google Earth Engine and utilises a random forest in regression mode to produce a deforestation probability value between 0 and 1. 
 The tool is trained on multiple historical temporal periods, with deforestation activity from the subsequent temporal period used as labels.
 
