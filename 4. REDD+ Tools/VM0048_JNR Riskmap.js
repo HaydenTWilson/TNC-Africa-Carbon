@@ -35,24 +35,28 @@ The algorithm has been configured to take a single input - a point in the jurisd
 
 //////////////////////////////// ------------------- Script Begins ------------------- ////////////////////////////////
 
-var point = /* color: #ffc82d */ee.Geometry.Point([32.48407031463026, 2.282253565280786]);
-
 //increase number of samples until the computation times out.
 var samples = 600
 
-var drive_folder = 'UGA'
+var drive_folder = 'eSwatini'
+
+print('Now running:', drive_folder)
 
 var jurisdiction = ee.FeatureCollection("FAO/GAUL/2015/level0").filterBounds(point)
 
 var ADM0_CODE = jurisdiction.first().get('ADM0_CODE')
-var jurisdiction_bounds = ee.FeatureCollection("FAO/GAUL/2015/level0").filterBounds(point).bounds()
+
+
 var admin = ee.FeatureCollection("FAO/GAUL_SIMPLIFIED_500m/2015/level1").filter(ee.Filter.eq('ADM0_CODE', ADM0_CODE))
+// var admin = ee.FeatureCollection("FAO/GAUL_SIMPLIFIED_500m/2015/level1").filter(ee.Filter.eq('ADM0_CODE', ADM0_CODE)).filterBounds(point2)
+// var jurisdiction = ee.FeatureCollection(ee.Feature(admin.geometry().dissolve()).set('ADM0_CODE',ADM0_CODE))
+var jurisdiction_bounds = jurisdiction.geometry().bounds()
+
 
 Map.addLayer(jurisdiction,{},'jurisdiction')
 Map.addLayer(admin,{},'Admin')
 
 Map.centerObject(point, 12)
-
 
 var adminImg = admin.reduceToImage({
     properties: ['ADM1_CODE'],
@@ -238,8 +242,18 @@ var trainedClassifier = ee.Classifier.smileRandomForest(200)
     .train({
       features: trainingSample,
       classProperty: 'labels',
-      inputProperties: ['defor_dist','forest_edge_dist','cropland_dist','accessibility','slope','AGB','pop_dist']});
+      inputProperties: ['defor_dist','forest_edge_dist','cropland_dist','slope','pop_dist']});
 print('Results of trained classifier', trainedClassifier.explain());
+
+var classifier_details = trainedClassifier.explain();
+var variable_importance = ee.Feature(null, ee.Dictionary(classifier_details).get('importance'));
+
+var chart = ui.Chart.feature.byProperty(variable_importance).setChartType('ColumnChart').setOptions({
+    title: 'Random Forest Variable Importance',
+    legend: {position: 'none'},
+    hAxis: {title: 'Bands'},
+    vAxis: {title: 'Importance'}});
+print("Variable importance:", chart);
 
 // Get a confusion matrix and overall accuracy for the training sample.
 var trainAccuracy = trainedClassifier.confusionMatrix();
@@ -273,7 +287,7 @@ var trainedClassifier = ee.Classifier.smileRandomForest(200).setOutputMode('PROB
     .train({
       features: trainingSample,
       classProperty: 'labels',
-      inputProperties: ['defor_dist','forest_edge_dist','cropland_dist','accessibility','slope','AGB','pop_dist']});
+      inputProperties: ['defor_dist','forest_edge_dist','cropland_dist','slope','pop_dist']});
 
 var CAL = GatherData(15,18)
 var CAL_forest = CAL.select('forest').eq(1)
@@ -286,6 +300,7 @@ var CNF_forest_dist = CNF.select('forest_edge_dist').rename('forest_dist')
 var CNF_Defor = ee.Image(0).where(forest_mask.eq(1).and(lossyear.gte(19)).and(lossyear.lte(22)),1).rename('defor')
 var CNF_probability = ee.Image(0).where(CNF.select('forest').eq(1),CNF.select(['defor_dist','forest_edge_dist','cropland_dist','accessibility','slope','AGB','pop_dist']).classify(trainedClassifier)).rename("classification");
 var BVP = GatherData(22,25)
+print('BVP Data:',BVP)
 var BVP_forest = BVP.select('forest').eq(1)
 var BVP_forest_dist = BVP.select('forest_edge_dist').rename('forest_dist')
 var BVP_Defor = ee.Image(0).where(forest_mask.eq(1).and(lossyear.gte(22)).and(lossyear.lte(25)),1).rename('defor') 
@@ -293,76 +308,132 @@ var BVP_probability = ee.Image(0).where(BVP.select('forest').eq(1),BVP.select(['
 
 var HRP_Defor = ee.Image(0).where(forest_mask.eq(1).and(lossyear.gte(15)).and(lossyear.lte(25)),1).rename('defor')
 
-Map.addLayer(BVP.select('forest').clip(jurisdiction),{min:0,max:1,palette:['black','green']},'forest - BVP')
-Map.addLayer(BVP_probability,{'bands': ["classification"], 'palette': ['black','blue', 'green', 'yellow', 'orange', 'red'],'max': 1}, 'probability')
+var agb = ee.ImageCollection("projects/sat-io/open-datasets/ESA/ESA_CCI_AGB").select('AGB')
+var biomass = ee.Image(agb.toList(10).get(9)).mask(BVP_forest)
 
 
-// ////////////////////////////////////////////////////////////////////////////////////////////////
-// ////////////////////////////////////////////////////////////////////////////////////////////////
-// ////////////////////////////////////////////////////////////////////////////////////////////////
-// ////////////////////////////////////////////////////////////////////////////////////////////////
-// ////////////////////////////////////////////////////////////////////////////////////////////////
+Map.addLayer(BVP.select('forest').clip(jurisdiction),{min:0,max:1,palette:['black','green']},'forest - BVP',false)
+Map.addLayer(biomass.clip(jurisdiction),{min:50, max:600,palette:['green','yellow','orange','red']},'AGB',false)
+Map.addLayer(BVP_probability.clip(jurisdiction),{'bands': ["classification"], 'palette': ['black','blue', 'green', 'yellow', 'orange', 'red'],'max': 1}, 'probability')
+
+//Calculate the expected annual deforestation rate
+var dates = ee.List.sequence(15,24,1)
+var defor_seq = dates.map(function(val){
+  var pixelCount = ee.Image(0).where(lossyear.eq(ee.Number(val)),1).reduceRegion({
+    reducer: ee.Reducer.sum(),
+    geometry: jurisdiction,
+    scale: 30,
+    maxPixels: 1e13})
+  return ee.Number(pixelCount.get('constant')).multiply(900).divide(10000)
+})
+
+var paired_list = dates.zip(defor_seq)
+
+var linearFit = ee.Dictionary(paired_list.reduce(ee.Reducer.linearFit()))
+
+var BVP_list = ee.List.sequence(25,30,1)
+var Avg_annual_defor_area = BVP_list.map(function(val){
+  var DeforArea = (ee.Number(linearFit.get('scale')).multiply(ee.Number(val))).add(ee.Number(linearFit.get('offset')))
+  return DeforArea
+}).reduce(ee.Reducer.mean()).multiply(6)
+
+print('The Expected Annual Jurisdictional Deforestation rate is:',Avg_annual_defor_area, 'ha per annum')
+
+var feat = ee.FeatureCollection(ee.Feature(point).set({'Annual_deforestation_BVP':Avg_annual_defor_area }))
+print(feat)
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////
 
 // Export the data
+
+Export.table.toDrive({
+  collection: feat, 
+  description: 'BVP_expected_annual_deforestation', 
+  folder:drive_folder, //Add your google drive folder name,
+  fileFormat: 'CSV'}
+);
+
 Export.image.toDrive({
-  image: CAL_forest.toInt8(),
+  image: biomass.toInt(),
+  description: 'BVP_biomass',
+  folder: drive_folder, //Add your google drive folder name
+  scale: 30,
+  crs: 'EPSG:3857',
+  maxPixels: 1e13,
+  region: jurisdiction_bounds
+});
+
+Export.image.toDrive({
+  image: CAL_forest.toUint8(),
   description: 'CAL_Forest',
   folder: drive_folder, //Add your google drive folder name
   scale: 30,
+  crs: 'EPSG:3857',
   maxPixels: 1e13,
   region: jurisdiction_bounds
 });
 
 Export.image.toDrive({
-  image: CNF_forest.toInt8(),
+  image: CNF_forest.toUint8(),
   description: 'CNF_Forest',
   folder: drive_folder, //Add your google drive folder name
   scale: 30,
+  crs: 'EPSG:3857',
   maxPixels: 1e13,
   region: jurisdiction_bounds
 });
 
 Export.image.toDrive({
-  image: BVP_forest.toInt8(),
+  image: BVP_forest.toUint8(),
   description: 'BVP_Forest',
   folder: drive_folder, //Add your google drive folder name
   scale: 30,
+  crs: 'EPSG:3857',
   maxPixels: 1e13,
   region: jurisdiction_bounds
 });
 
 Export.image.toDrive({
-  image: CAL_Defor.toInt8(),
+  image: CAL_Defor.toUint8(),
   description: 'CAL_Defor',
   folder: drive_folder, //Add your google drive folder name
   scale: 30,
+  crs: 'EPSG:3857',
   maxPixels: 1e13,
   region: jurisdiction_bounds
 });
 
 Export.image.toDrive({
-  image: CNF_Defor.toInt8(),
+  image: CNF_Defor.toUint8(),
   description: 'CNF_Defor',
   folder: drive_folder, //Add your google drive folder name
   scale: 30,
+  crs: 'EPSG:3857',
   maxPixels: 1e13,
   region: jurisdiction_bounds
 });
 
 Export.image.toDrive({
-  image: HRP_Defor.toInt8(),
+  image: HRP_Defor.toUint8(),
   description: 'HRP_Defor',
   folder: drive_folder, //Add your google drive folder name
   scale: 30,
+  crs: 'EPSG:3857',
   maxPixels: 1e13,
   region: jurisdiction_bounds
 });
 
 Export.image.toDrive({
-  image: BVP_Defor.toInt8(),
+  image: BVP_Defor.toUint8(),
   description: 'BVP_Defor',
   folder: drive_folder, //Add your google drive folder name
   scale: 30,
+  crs: 'EPSG:3857',
   maxPixels: 1e13,
   region: jurisdiction_bounds
 });
@@ -372,15 +443,17 @@ Export.image.toDrive({
   description: 'CAL_Dist',
   folder: drive_folder, //Add your google drive folder name
   scale: 30,
+  crs: 'EPSG:3857',
   maxPixels: 1e13,
   region: jurisdiction_bounds
 });
 
 Export.image.toDrive({
   image: CNF_forest_dist.toFloat(),
-  description: 'CNF_forest',
+  description: 'CNF_Dist',
   folder: drive_folder, //Add your google drive folder name
   scale: 30,
+  crs: 'EPSG:3857',
   maxPixels: 1e13,
   region: jurisdiction_bounds
 });
@@ -390,6 +463,7 @@ Export.image.toDrive({
   description: 'BVP_Dist',
   folder: drive_folder, //Add your google drive folder name
   scale: 30,
+  crs: 'EPSG:3857',
   maxPixels: 1e13,
   region: jurisdiction_bounds
 });
@@ -399,6 +473,7 @@ Export.image.toDrive({
   description: 'CAL_Riskmap',
   folder: drive_folder, //Add your google drive folder name
   scale: 30,
+  crs: 'EPSG:3857',
   maxPixels: 1e13,
   region: jurisdiction_bounds
 });
@@ -408,6 +483,7 @@ Export.image.toDrive({
   description: 'CNF_Riskmap',
   folder: drive_folder, //Add your google drive folder name
   scale: 30,
+  crs: 'EPSG:3857',
   maxPixels: 1e13,
   region: jurisdiction_bounds
 });
@@ -417,24 +493,27 @@ Export.image.toDrive({
   description: 'BVP_Riskmap',
   folder: drive_folder, //Add your google drive folder name
   scale: 30,
+  crs: 'EPSG:3857',
   maxPixels: 1e13,
   region: jurisdiction_bounds
 });
 
 Export.image.toDrive({
-  image: adminImg.toInt8(),
+  image: adminImg.toUint8(),
   description: 'Admin',
   folder: drive_folder, //Add your google drive folder name
   scale: 30,
+  crs: 'EPSG:3857',
   maxPixels: 1e13,
   region: jurisdiction_bounds
 });
 
 Export.image.toDrive({
-  image: jurisdictionImg.toInt8(),
+  image: jurisdictionImg.toUint8(),
   description: 'Jurisdiction',
   folder: drive_folder, //Add your google drive folder name
   scale: 30,
+  crs: 'EPSG:3857',
   maxPixels: 1e13,
   region: jurisdiction_bounds
 });
