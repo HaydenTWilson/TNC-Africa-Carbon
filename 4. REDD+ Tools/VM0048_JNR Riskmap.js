@@ -1,5 +1,6 @@
 /* Welcome to the TNC VM0048 Risk Mapping tool - Developed by Dr Hayden Wilson - Hayden.wilson@tnc.org
 Release date  - 02 Dec 2025
+Updated - 20 Jul 2026
 License - Creative Commons CC BY-SA.
 
 This script is developed with the aim of assisting projects develop an ex-ante estimation of the likely future rates of deforestation within their projects jurisdiction.
@@ -332,14 +333,14 @@ var paired_list = dates.zip(defor_seq)
 var linearFit = ee.Dictionary(paired_list.reduce(ee.Reducer.linearFit()))
 
 var BVP_list = ee.List.sequence(25,30,1)
-var Avg_annual_defor_area = BVP_list.map(function(val){
+var annual_defor_area = BVP_list.map(function(val){
   var DeforArea = (ee.Number(linearFit.get('scale')).multiply(ee.Number(val))).add(ee.Number(linearFit.get('offset')))
   return DeforArea
 }).reduce(ee.Reducer.mean()).multiply(6)
 
-print('The Expected Annual Jurisdictional Deforestation rate is:',Avg_annual_defor_area, 'ha per annum')
+print('The Expected Jurisdictional Deforestation area is:',Avg_annual_defor_area, 'ha')
 
-var feat = ee.FeatureCollection(ee.Feature(point).set({'Annual_deforestation_BVP':Avg_annual_defor_area }))
+var feat = ee.FeatureCollection(ee.Feature(point).set({'Annual_deforestation_BVP':annual_defor_area }))
 print(feat)
 
 
@@ -353,7 +354,7 @@ print(feat)
 
 Export.table.toDrive({
   collection: feat, 
-  description: 'BVP_expected_annual_deforestation', 
+  description: 'BVP_expected_total_deforestation', 
   folder:drive_folder, //Add your google drive folder name,
   fileFormat: 'CSV'}
 );
